@@ -61,7 +61,7 @@ export const serializeSettingsProfile = (settings, options = {}) => {
 
   return JSON.stringify(
     {
-      app: 'Darkpool-Mon',
+      app: 'Sentinel Flare',
       schemaVersion: 1,
       exportedAt,
       settings: normalizePersistedSettings(settings),
@@ -136,7 +136,7 @@ export const buildSettingsProfileFilename = (settings = {}, date = new Date()) =
     .replace(/:/g, '');
 
   return [
-    'darkpool-mon-profile',
+    'sentinel-flare-profile',
     filenamePart(normalized.selectedStock, 'all'),
     filenamePart(normalized.provider, 'provider'),
     timestamp,

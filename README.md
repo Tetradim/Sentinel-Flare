@@ -1,6 +1,6 @@
-# Darkpool Monitor
+# Sentinel Flare
 
-Darkpool Monitor is a FastAPI, React, and Discord alerting system for monitoring large off-exchange prints, clustering them into price levels, and scoring confluence against dealer-exposure-style levels and options-flow context.
+Sentinel Flare is a FastAPI, React, and Discord alerting system for monitoring large off-exchange prints, clustering them into price levels, and scoring confluence against dealer-exposure-style levels and options-flow context.
 
 This is an intelligence and alerting tool. It does not auto-trade and should not be treated as financial advice. Dark pool prints are contextual levels, not standalone buy or sell signals.
 
@@ -21,8 +21,8 @@ This is an intelligence and alerting tool. It does not auto-trade and should not
 - Market-regime controls that classify trend-up, trend-down, range-bound, high-volatility, or insufficient-data conditions from recent prints before Sentinel review.
 - Session drawdown, volatility-cap, allowed-regime, and volatility-adjusted-stop gates based on common crypto-bot risk-management patterns.
 - Lightweight print follow-through backtest metrics for win rate, profit factor, expectancy, cumulative return, and max drawdown.
-- Source-confirmation coverage planning for price/NBBO, liquidity/depth, halt/LULD, material-news, and optional options-flow confirmation before Pulse packet preparation.
-- Pulse handoff guardrails that require Sentinel Edge approval, explicit manual execution, risk checks, source-coverage audit metadata, and rejection of live-order packet keys.
+- Source-confirmation coverage planning for price/NBBO, liquidity/depth, halt/LULD, material-news, and optional options-flow confirmation before Edge-routed Pulse review packet preparation.
+- Edge-routed Pulse review guardrails that require Sentinel Edge approval, explicit manual execution, risk checks, source-coverage audit metadata, and rejection of direct Pulse destinations or live-order packet keys.
 - Python and frontend test coverage for provider behavior, route smoke checks, options endpoints, alerting, confluence, level clustering, Discord command handling, z-scores, CSV export, and frontend build.
 
 ## Production Posture
@@ -61,7 +61,7 @@ Run the frontend:
 npm run dev
 ```
 
-On Windows, double-click `Launch-Darkpool-Monitor.bat` from the repo root to start the backend on `8002` and the frontend on `3002`.
+On Windows, double-click `Launch-Sentinel-Flare.bat` from the repo root to start the backend on `8002` and the frontend on `3002`.
 
 Open http://localhost:3002 when using the launcher. Manual `npm run dev` still uses Vite's default port unless you pass `-- --port 3002`.
 
@@ -83,7 +83,7 @@ chmod +x install-macos.sh
 ./install-macos.sh
 ```
 
-After installation, double-click `Darkpool Monitor.command` on the Desktop. The launcher starts the backend on `8002`, starts the frontend on `3002`, and opens the dashboard. Logs are written to `~/Desktop/Darkpool-Monitor.log`.
+After installation, double-click `Sentinel Flare.command` on the Desktop. The launcher starts the backend on `8002`, starts the frontend on `3002`, and opens the dashboard. Logs are written to `~/Desktop/Sentinel-Flare.log`.
 
 Manual launch options:
 
@@ -102,6 +102,8 @@ python discord_bot.py
 ## Environment Variables
 
 - `SECRET_KEY`: persistent secret used for JWTs and password hashing.
+- `DARKPOOL_EVENT_BUS_SECRET`: required shared secret for `/api/bus/events` reads and writes. Requests must send it in the `X-Darkpool-Event-Bus-Secret` header; the bus fails closed when this value is unset, a known placeholder, or shorter than 32 characters.
+- `DARKPOOL_EDGE_DECISION_SECRET`: required shared secret for Sentinel Edge decision callbacks. Requests to `/darkpool/trade-intent/edge-decision` must send it in `X-Darkpool-Edge-Secret`; the callback fails closed when this value is unset, a known placeholder, or shorter than 32 characters.
 - `PORT`: FastAPI port, default `8002`.
 - `FRONTEND_URL`: CORS origin for the Vite app.
 - `POLYGON_API_KEY`: optional future market-data integration.
@@ -142,6 +144,7 @@ Dark pool intelligence:
 - `GET /darkpool/backtest?symbol=AAPL&provider=demo&fee_bps=2&trade_limit=50`
 - `GET /darkpool/information-sources?active_provider=finra`
 - `GET /darkpool/trade-intent?symbol=AAPL&provider=demo&min_score=75&max_distance_pct=1&min_notional=25000000&max_risk_dollars=500&stop_distance_pct=1&reward_risk_ratio=2&max_position_notional=50000&max_session_drawdown_pct=5&current_session_drawdown_pct=0&max_regime_volatility_pct=10&allow_trend_up=true&allow_trend_down=true&allow_range_bound=true&allow_high_volatility=false&use_volatility_adjusted_stop=true&max_quality_caution_flags=99&min_quality_support_flags=0&min_source_confirmation_weight=0&require_source_coverage_complete=true&price_confirmed=true&liquidity_confirmed=true&news_checked=true&observed_spread_bps=5&max_spread_bps=25`
+- `POST /darkpool/trade-intent/edge-decision` with `X-Darkpool-Edge-Secret`
 
 Scanner and visualization:
 
@@ -175,6 +178,13 @@ Alerts and watchlists:
 - `POST /alerts/webhook`
 - `GET /watchlists`
 - `POST /watchlists`
+
+Cross-bot event bus:
+
+- `GET /api/bus/events?target=sentinel-edge` with `X-Darkpool-Event-Bus-Secret`.
+- `POST /api/bus/events` with `X-Darkpool-Event-Bus-Secret`.
+
+The event bus is for local bot-to-bot observation and review packets. It is not an order-entry surface, and it rejects unauthenticated reads or writes.
 
 Discord integration:
 
@@ -234,12 +244,14 @@ The endpoint returns:
 - `preferences.require_complete_source_coverage`: enabled by default. When true, missing required price, liquidity, halt/LULD, or material-news coverage blocks the intent before Sentinel can approve Pulse packet preparation.
 - `preferences.source_coverage_override_reason`: required when required source coverage is incomplete and `require_source_coverage_complete=false`. The reason is carried into prepared Pulse packets for manual audit and does not bypass Sentinel confirmation or manual execution requirements.
 - Source-coverage blockers name the missing required families, so Pulse status reasons show whether the operator needs price/NBBO, liquidity/depth, halt/LULD, material-news coverage, or multiple source families before review can proceed.
-- `sentinel`: a Sentinel Edge decision. The local adapter approves only intents that pass every user threshold and have price confirmation, liquidity confirmation, news check, and an observed spread within the configured maximum.
+- `sentinel`: local Darkpool precheck metadata. It is not a substitute for an external Sentinel Edge decision.
 - `sentinel.checks`: named pass/fail checklist entries for intent readiness, price confirmation, liquidity confirmation, news check, and spread guard.
-- `pulse_packet`: a prepared Pulse communication packet only when `include_pulse_packet=true` and Sentinel approved the intent. Approved packets include the risk plan, raw confidence, source-adjusted confidence, confidence breakdown, quality flags, source-coverage checklist, optional source-coverage override reason, and Sentinel checklist for manual execution review.
+- `pulse_packet`: withheld during local review. It can be prepared only through the authenticated Edge decision callback when `reviewer=sentinel-edge`, the decision is approved, and the callback secret matches. Approved packets use `destination=sentinel-edge`, `final_target=sentinel-pulse`, and `edge_review_required=true`, and include the risk plan, raw confidence, source-adjusted confidence, confidence breakdown, quality flags, optional source-coverage override reason, and Sentinel checklist for manual execution review.
 - `pulse_status`: explicit Pulse readiness metadata with `prepared`, `withheld`, `not_requested`, or `unavailable` status, a user-readable message, blocker reasons, Sentinel status, and `requires_manual_execution=true`.
 
-Pulse packets are not orders. They carry `requires_manual_execution=true` and are intended for confirmation workflow wiring, not autonomous live trading. If any Sentinel confirmation check is missing or the spread is too wide, the packet is withheld and `pulse_status.reasons` explains why.
+Pulse packets are not orders and are not direct Darkpool-to-Pulse handoffs. They carry `requires_manual_execution=true`, route through Sentinel Edge for final review, and are intended for confirmation workflow wiring, not autonomous live trading. If any Sentinel confirmation check is missing or the spread is too wide, the packet is withheld and `pulse_status.reasons` explains why.
+
+Sentinel Edge can post an approved decision back to `POST /darkpool/trade-intent/edge-decision` with the original `intent`, `sentinel_decision`, optional `expires_at`, and optional `edge_signature`. Darkpool rejects missing, weak, placeholder, or wrong secrets; expired decisions; local precheck decisions; and non-approved decisions before it returns any packet metadata. Accepted callbacks are recorded on the local event bus with `execution=none`.
 
 The dashboard Pulse summary shows raw confidence alongside source-adjusted confidence when a packet is available, so manual reviewers can see how much confirmation-source coverage discounted the original confluence score before considering any Pulse handoff. If a packet was prepared while required source coverage remains incomplete, the summary names the missing source families and the operator override reason so override-based review cannot look fully confirmed.
 

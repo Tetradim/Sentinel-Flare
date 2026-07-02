@@ -8,6 +8,7 @@ from darkpool.models import ConfluenceScore, DarkpoolLevel, ExposureNode, Market
 from darkpool.trade_intent import (
     LocalSentinelEdgeAdapter,
     SentinelConfirmation,
+    SentinelDecision,
     TradingPreferences,
     build_trade_intent,
     prepare_pulse_packet,
@@ -315,7 +316,7 @@ def test_trade_intent_risk_plan_uses_share_rounded_notional_and_entry_stop_loss(
     assert intent.risk_plan.estimated_gain_dollars == 667.2
 
 
-def test_sentinel_approval_is_required_before_pulse_packet_exists():
+def test_external_sentinel_edge_approval_is_required_before_pulse_packet_exists():
     preferences = TradingPreferences(
         min_score=80,
         max_distance_pct=1.0,
@@ -350,11 +351,26 @@ def test_sentinel_approval_is_required_before_pulse_packet_exists():
         "spread_guard",
     ]
     assert all(check.status == "passed" for check in sentinel.checks)
-    packet = prepare_pulse_packet(intent, sentinel)
-    assert packet["destination"] == "pulse"
+    with pytest.raises(ValueError, match="External Sentinel Edge approval is required"):
+        prepare_pulse_packet(intent, sentinel)
+
+    external_sentinel = SentinelDecision(
+        decision_id="edge:decision:AAPL:1",
+        status="approved",
+        reviewer="sentinel-edge",
+        reviewed_at=datetime.now(timezone.utc),
+        reasons=["external Sentinel Edge approved the signal"],
+        confirmation=confirmation,
+        checks=sentinel.checks,
+    )
+
+    packet = prepare_pulse_packet(intent, external_sentinel)
+    assert packet["destination"] == "sentinel-edge"
+    assert packet["final_target"] == "sentinel-pulse"
+    assert packet["edge_review_required"] is True
     assert packet["action"] == "BUY"
     assert packet["requires_manual_execution"] is True
-    assert packet["sentinel_decision_id"] == sentinel.decision_id
+    assert packet["sentinel_decision_id"] == external_sentinel.decision_id
     assert packet["risk_plan"]["max_risk_dollars"] == 500.0
     assert packet["risk_plan"]["reward_risk_ratio"] == 2.0
     assert packet["risk_plan"]["planned_action"] == "BUY"
@@ -490,6 +506,153 @@ def test_pulse_packet_rejects_missing_or_failed_sentinel_confirmation():
         prepare_pulse_packet(intent, sentinel)
 
 
+def test_edge_decision_intake_fails_closed_without_configured_secret(monkeypatch):
+    client = TestClient(server.app)
+    preferences = TradingPreferences(min_score=80, max_distance_pct=1.0, min_notional=50_000_000)
+    intent = build_trade_intent(_score(), preferences)
+    confirmation = SentinelConfirmation(price_confirmed=True, liquidity_confirmed=True, news_checked=True)
+    local_sentinel = LocalSentinelEdgeAdapter().review(intent, confirmation)
+    edge_decision = SentinelDecision(
+        decision_id="edge:decision:AAPL:1",
+        status="approved",
+        reviewer="sentinel-edge",
+        reviewed_at=datetime.now(timezone.utc),
+        reasons=["Sentinel Edge approved the Darkpool signal"],
+        confirmation=confirmation,
+        checks=local_sentinel.checks,
+    )
+    monkeypatch.delenv("DARKPOOL_EDGE_DECISION_SECRET", raising=False)
+
+    response = client.post(
+        "/darkpool/trade-intent/edge-decision",
+        headers={"X-Darkpool-Edge-Secret": "edge-secret"},
+        json={
+            "intent": intent.model_dump(mode="json"),
+            "sentinel_decision": edge_decision.model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 503
+    assert "DARKPOOL_EDGE_DECISION_SECRET" in response.text
+
+
+def test_edge_decision_intake_fails_closed_with_weak_configured_secret(monkeypatch):
+    monkeypatch.setenv("DARKPOOL_EDGE_DECISION_SECRET", "edge-secret")
+    client = TestClient(server.app)
+    preferences = TradingPreferences(min_score=80, max_distance_pct=1.0, min_notional=50_000_000)
+    intent = build_trade_intent(_score(), preferences)
+    confirmation = SentinelConfirmation(price_confirmed=True, liquidity_confirmed=True, news_checked=True)
+    local_sentinel = LocalSentinelEdgeAdapter().review(intent, confirmation)
+    edge_decision = SentinelDecision(
+        decision_id="edge:decision:AAPL:weak-secret",
+        status="approved",
+        reviewer="sentinel-edge",
+        reviewed_at=datetime.now(timezone.utc),
+        reasons=["Sentinel Edge approved the Darkpool signal"],
+        confirmation=confirmation,
+        checks=local_sentinel.checks,
+    )
+
+    response = client.post(
+        "/darkpool/trade-intent/edge-decision",
+        headers={"X-Darkpool-Edge-Secret": "edge-secret"},
+        json={
+            "intent": intent.model_dump(mode="json"),
+            "sentinel_decision": edge_decision.model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 503
+    assert "DARKPOOL_EDGE_DECISION_SECRET" in response.text
+    assert "at least 32 characters" in response.text
+
+
+def test_edge_decision_intake_accepts_authenticated_edge_decision_and_records_metadata(tmp_path, monkeypatch):
+    edge_secret = "edge-secret-for-darkpool-callbacks-32chars"
+    monkeypatch.setenv("BOT_EVENT_BUS_DIR", str(tmp_path))
+    monkeypatch.setenv("DARKPOOL_EDGE_DECISION_SECRET", edge_secret)
+    client = TestClient(server.app)
+    preferences = TradingPreferences(min_score=80, max_distance_pct=1.0, min_notional=50_000_000)
+    intent = build_trade_intent(_score(), preferences)
+    confirmation = SentinelConfirmation(price_confirmed=True, liquidity_confirmed=True, news_checked=True)
+    local_sentinel = LocalSentinelEdgeAdapter().review(intent, confirmation)
+    edge_decision = SentinelDecision(
+        decision_id="edge:decision:AAPL:2",
+        status="approved",
+        reviewer="sentinel-edge",
+        reviewed_at=datetime.now(timezone.utc),
+        reasons=["bullish candlestick pattern confirmed by Sentinel Edge"],
+        confirmation=confirmation,
+        checks=local_sentinel.checks,
+    )
+    expires_at = "2099-01-01T00:00:00+00:00"
+
+    response = client.post(
+        "/darkpool/trade-intent/edge-decision",
+        headers={"X-Darkpool-Edge-Secret": edge_secret},
+        json={
+            "intent": intent.model_dump(mode="json"),
+            "sentinel_decision": edge_decision.model_dump(mode="json"),
+            "expires_at": expires_at,
+            "edge_signature": "ed25519:signature",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "accepted"
+    assert body["mode"] == "signal_only"
+    assert body["execution"] == "none"
+    assert body["edge_decision"]["decision_id"] == edge_decision.decision_id
+    assert body["edge_decision"]["expires_at"] == expires_at
+    assert body["edge_decision"]["signature_present"] is True
+    assert body["pulse_packet"]["destination"] == "sentinel-edge"
+    assert body["pulse_packet"]["final_target"] == "sentinel-pulse"
+    assert body["pulse_packet"]["sentinel_decision_id"] == edge_decision.decision_id
+    assert body["pulse_packet"]["requires_manual_execution"] is True
+
+    from darkpool.bot_event_bus import EventBusStore
+
+    events = EventBusStore().list_events(limit=10, target="sentinel-edge")
+    assert events[0]["event_type"] == "darkpool.edge_decision.accepted"
+    assert events[0]["payload"]["sentinel_decision"]["decision_id"] == edge_decision.decision_id
+    assert events[0]["payload"]["expires_at"] == expires_at
+    assert events[0]["payload"]["edge_signature_present"] is True
+
+
+def test_edge_decision_intake_rejects_expired_edge_decision(monkeypatch):
+    edge_secret = "edge-secret-for-darkpool-callbacks-32chars"
+    monkeypatch.setenv("DARKPOOL_EDGE_DECISION_SECRET", edge_secret)
+    client = TestClient(server.app)
+    preferences = TradingPreferences(min_score=80, max_distance_pct=1.0, min_notional=50_000_000)
+    intent = build_trade_intent(_score(), preferences)
+    confirmation = SentinelConfirmation(price_confirmed=True, liquidity_confirmed=True, news_checked=True)
+    local_sentinel = LocalSentinelEdgeAdapter().review(intent, confirmation)
+    edge_decision = SentinelDecision(
+        decision_id="edge:decision:AAPL:expired",
+        status="approved",
+        reviewer="sentinel-edge",
+        reviewed_at=datetime.now(timezone.utc),
+        reasons=["Sentinel Edge approved the Darkpool signal"],
+        confirmation=confirmation,
+        checks=local_sentinel.checks,
+    )
+
+    response = client.post(
+        "/darkpool/trade-intent/edge-decision",
+        headers={"X-Darkpool-Edge-Secret": edge_secret},
+        json={
+            "intent": intent.model_dump(mode="json"),
+            "sentinel_decision": edge_decision.model_dump(mode="json"),
+            "expires_at": "2000-01-01T00:00:00+00:00",
+            "edge_signature": "ed25519:signature",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "expired" in response.text.lower()
+
+
 def test_trade_intent_endpoint_exposes_customizable_gate_and_pulse_packet():
     client = TestClient(server.app)
 
@@ -523,7 +686,9 @@ def test_trade_intent_endpoint_exposes_customizable_gate_and_pulse_packet():
     assert finra_source["status"] == "missing"
     assert "real-time price/NBBO" in body["confirmation_sources"]["recommended_next_sources"][0]
     if body["sentinel"]["status"] == "approved":
-        assert body["pulse_packet"]["destination"] == "pulse"
+        assert body["pulse_packet"]["destination"] == "sentinel-edge"
+        assert body["pulse_packet"]["final_target"] == "sentinel-pulse"
+        assert body["pulse_packet"]["edge_review_required"] is True
         assert body["pulse_packet"]["requires_manual_execution"] is True
         assert body["intent"]["risk_plan"]["max_risk_dollars"] == 750.0
         assert body["pulse_packet"]["risk_plan"]["max_position_notional"] == 40000.0
@@ -566,7 +731,7 @@ def test_trade_intent_endpoint_clears_source_coverage_block_when_required_adapte
     client = TestClient(server.app)
     monkeypatch.setenv("POLYGON_API_KEY", "test-polygon")
     monkeypatch.setenv("NASDAQ_HALTS_RSS_ENABLED", "true")
-    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "darkpool-mon test@example.com")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "sentinel-flare test@example.com")
 
     response = client.get(
         "/darkpool/trade-intent?symbol=AAPL&provider=demo&min_score=60"
@@ -578,13 +743,11 @@ def test_trade_intent_endpoint_clears_source_coverage_block_when_required_adapte
     body = response.json()
     assert body["confirmation_sources"]["required_coverage_complete"] is True
     assert body["intent"]["missing_required_source_coverage"] == []
-    assert body["pulse_status"]["status"] == "prepared"
-    assert body["pulse_packet"]["required_source_coverage_complete"] is True
-    assert body["pulse_packet"]["missing_required_source_coverage"] == []
-    coverage = {item["role"]: item for item in body["pulse_packet"]["source_coverage"]}
-    assert coverage["risk_blocker"]["status"] == "met"
-    assert coverage["news_context"]["status"] == "met"
-    assert body["pulse_packet"]["requires_manual_execution"] is True
+    assert body["sentinel"]["reviewer"] == "sentinel-flare-local-precheck"
+    assert body["pulse_status"]["status"] == "withheld"
+    assert body["pulse_status"]["sentinel_status"] == "approved"
+    assert body["pulse_packet"] is None
+    assert any("external Sentinel Edge approval" in reason for reason in body["pulse_status"]["reasons"])
 
 
 def test_trade_intent_endpoint_withholds_pulse_until_confirmation_is_complete():
@@ -625,9 +788,10 @@ def test_trade_intent_endpoint_allows_source_coverage_override_with_reason():
     body = response.json()
     assert body["preferences"]["source_coverage_override_reason"] == reason
     assert body["intent"]["source_coverage_override_reason"] == reason
-    assert body["pulse_status"]["status"] == "prepared"
-    assert body["pulse_packet"]["source_coverage_override_reason"] == reason
-    assert body["pulse_packet"]["requires_manual_execution"] is True
+    assert body["sentinel"]["reviewer"] == "sentinel-flare-local-precheck"
+    assert body["pulse_status"]["status"] == "withheld"
+    assert body["pulse_packet"] is None
+    assert any("external Sentinel Edge approval" in reason for reason in body["pulse_status"]["reasons"])
 
 
 def test_trade_intent_endpoint_exposes_quality_gate_customization():

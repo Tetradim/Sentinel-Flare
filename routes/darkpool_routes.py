@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from darkpool.alerting import build_alert_candidates
 from darkpool.backtesting import build_print_followthrough_backtest
@@ -19,10 +20,19 @@ from darkpool.level_engine import cluster_darkpool_levels, detect_air_pockets
 from darkpool.providers import ProviderError, fetch_provider_result, get_provider_capability
 from darkpool.regime import analyze_market_regime
 from darkpool.source_catalog import build_trade_confirmation_plan, list_market_information_sources
-from darkpool.trade_intent import SentinelConfirmation, TradingPreferences
+from darkpool.trade_intent import SentinelConfirmation, SentinelDecision, TradeIntent, TradingPreferences, prepare_pulse_packet
 from darkpool.trade_pipeline import build_trade_intent_report
+from darkpool.pulse_gateway import PulseGateway
 
 router = APIRouter()
+EDGE_DECISION_SECRET_ENV = "DARKPOOL_EDGE_DECISION_SECRET"
+EDGE_DECISION_SECRET_HEADER = "X-Darkpool-Edge-Secret"
+MIN_EDGE_DECISION_SECRET_LENGTH = 32
+EDGE_DECISION_SECRET_PLACEHOLDERS = {
+    "replace_with_a_long_random_edge_decision_secret",
+    "change_me",
+    "changeme",
+}
 
 
 class OTCAggregateResponse(BaseModel):
@@ -34,6 +44,32 @@ class OTCAggregateResponse(BaseModel):
     tier: str
     is_ats: bool
     fetched_at: str
+
+
+class EdgeDecisionIntakeRequest(BaseModel):
+    intent: TradeIntent
+    sentinel_decision: SentinelDecision
+    expires_at: datetime | None = None
+    edge_signature: str | None = Field(default=None, max_length=500)
+
+
+def require_edge_decision_secret(
+    provided_secret: str | None = Header(default=None, alias=EDGE_DECISION_SECRET_HEADER),
+) -> None:
+    configured_secret = os.getenv(EDGE_DECISION_SECRET_ENV, "").strip()
+    if not configured_secret:
+        raise HTTPException(503, f"{EDGE_DECISION_SECRET_ENV} is not configured")
+    if (
+        len(configured_secret) < MIN_EDGE_DECISION_SECRET_LENGTH
+        or configured_secret.lower() in EDGE_DECISION_SECRET_PLACEHOLDERS
+    ):
+        raise HTTPException(
+            503,
+            f"{EDGE_DECISION_SECRET_ENV} must be a non-placeholder secret with at least "
+            f"{MIN_EDGE_DECISION_SECRET_LENGTH} characters",
+        )
+    if not provided_secret or not secrets.compare_digest(provided_secret, configured_secret):
+        raise HTTPException(401, "Invalid Darkpool Edge decision secret")
 
 
 def configured_market_providers(active_provider: str) -> list[str]:
@@ -484,3 +520,56 @@ async def get_darkpool_trade_intent(
         target="sentinel-edge",
     )
     return response_payload
+
+
+@router.post("/darkpool/trade-intent/edge-decision")
+async def accept_sentinel_edge_decision(
+    request: EdgeDecisionIntakeRequest,
+    _: None = Depends(require_edge_decision_secret),
+):
+    """Accept an authenticated Sentinel Edge decision for a Darkpool signal."""
+    if request.expires_at:
+        expires_at = request.expires_at if request.expires_at.tzinfo else request.expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(422, "Sentinel Edge decision expired")
+    try:
+        pulse_packet = PulseGateway().validate_packet(
+            prepare_pulse_packet(request.intent, request.sentinel_decision)
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    payload = {
+        "idempotency_key": f"sentinel-flare:{request.intent.symbol}:edge_decision:{request.sentinel_decision.decision_id}",
+        "intent": request.intent.model_dump(mode="json"),
+        "sentinel_decision": request.sentinel_decision.model_dump(mode="json"),
+        "pulse_packet": pulse_packet,
+        "expires_at": request.expires_at.isoformat() if request.expires_at else None,
+        "edge_signature_present": bool(request.edge_signature),
+        "mode": "signal_only",
+        "execution": "none",
+    }
+    event = publish_event(
+        "darkpool.edge_decision.accepted",
+        payload,
+        target="sentinel-edge",
+    )
+    edge_decision_metadata = {
+        "decision_id": request.sentinel_decision.decision_id,
+        "status": request.sentinel_decision.status,
+        "reviewer": request.sentinel_decision.reviewer,
+        "reviewed_at": request.sentinel_decision.reviewed_at.isoformat(),
+        "expires_at": request.expires_at.isoformat() if request.expires_at else None,
+        "signature_present": bool(request.edge_signature),
+    }
+    return {
+        "status": "accepted",
+        "mode": "signal_only",
+        "execution": "none",
+        "requires_manual_execution": True,
+        "edge_decision": edge_decision_metadata,
+        "sentinel": request.sentinel_decision.model_dump(mode="json"),
+        "pulse_packet": pulse_packet,
+        "event_id": event["event_id"],
+        "duplicate": event.get("duplicate", False),
+    }

@@ -14,6 +14,7 @@ from .trade_intent import (
     TradeIntent,
     TradingPreferences,
     build_trade_intent,
+    is_external_sentinel_edge_decision,
     prepare_pulse_packet,
 )
 
@@ -127,7 +128,7 @@ async def build_trade_intent_report(
     )
     sentinel = LocalSentinelEdgeAdapter().review(intent, confirmation)
     pulse_packet = None
-    if include_pulse_packet and sentinel.status == "approved":
+    if include_pulse_packet and is_external_sentinel_edge_decision(sentinel):
         pulse_packet = PulseGateway().validate_packet(
             _attach_source_coverage(
                 prepare_pulse_packet(intent, sentinel),

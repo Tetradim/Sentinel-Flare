@@ -1,1 +1,1 @@
-"""HTTP route modules for Darkpool Monitor."""
+"""HTTP route modules for Sentinel Flare."""

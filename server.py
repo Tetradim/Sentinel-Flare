@@ -1,4 +1,4 @@
-"""Darkpool Monitor Backend - Python server with FINRA API integration."""
+"""Sentinel Flare Backend - Python server with FINRA API integration."""
 
 import os
 import asyncio
@@ -49,8 +49,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Darkpool Monitor API",
-    description="Backend for real-time darkpool monitoring with FINRA OTC data",
+    title="Sentinel Flare API",
+    description="Backend for real-time Sentinel Flare monitoring with FINRA OTC data",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -491,7 +491,7 @@ class Transaction(BaseModel):
 async def root():
     """Root endpoint."""
     return {
-        "name": "Darkpool Monitor API",
+        "name": "Sentinel Flare API",
         "version": "1.0.0",
         "docs": "/docs",
         "providers": [provider.id for provider in list_provider_capabilities()],

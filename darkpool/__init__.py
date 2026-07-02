@@ -1,1 +1,1 @@
-"""Core services for Darkpool Monitor."""
+"""Core services for Sentinel Flare."""

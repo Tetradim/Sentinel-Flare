@@ -556,7 +556,7 @@ def build_trade_intent(
 
 
 class LocalSentinelEdgeAdapter:
-    """Local confirmation adapter used until a concrete Sentinel Edge API exists."""
+    """Local precheck adapter; it cannot replace an external Sentinel Edge decision."""
 
     def review(self, intent: TradeIntent, confirmation: SentinelConfirmation | None = None) -> SentinelDecision:
         confirmation = confirmation or SentinelConfirmation()
@@ -565,6 +565,7 @@ class LocalSentinelEdgeAdapter:
             return SentinelDecision(
                 decision_id=f"sentinel:{intent.id}:{_stable_id(intent.id, 'rejected')}",
                 status="rejected",
+                reviewer="sentinel-flare-local-precheck",
                 reviewed_at=datetime.now(timezone.utc),
                 reasons=intent.blockers or [message],
                 confirmation=confirmation,
@@ -659,6 +660,7 @@ class LocalSentinelEdgeAdapter:
             return SentinelDecision(
                 decision_id=f"sentinel:{intent.id}:{_stable_id(intent.id, 'confirmation-rejected')}",
                 status="rejected",
+                reviewer="sentinel-flare-local-precheck",
                 reviewed_at=datetime.now(timezone.utc),
                 reasons=rejection_reasons,
                 confirmation=confirmation,
@@ -668,24 +670,41 @@ class LocalSentinelEdgeAdapter:
         return SentinelDecision(
             decision_id=f"sentinel:{intent.id}:{_stable_id(intent.id, 'approved')}",
             status="approved",
+            reviewer="sentinel-flare-local-precheck",
             reviewed_at=datetime.now(timezone.utc),
             reasons=[
                 "intent passed user thresholds",
                 "price, liquidity, and news confirmations complete",
                 f"spread {confirmation.observed_spread_bps:.1f} bps is within {confirmation.max_spread_bps:.1f} bps max",
-                "Pulse packet may be prepared for manual execution review",
+                "external Sentinel Edge approval is still required before Pulse",
             ],
             confirmation=confirmation,
             checks=checks,
         )
 
 
+def is_external_sentinel_edge_decision(sentinel_decision: SentinelDecision) -> bool:
+    reviewer = str(sentinel_decision.reviewer or "").strip().lower().replace("_", "-")
+    decision_id = str(sentinel_decision.decision_id or "").strip().lower()
+    return (
+        sentinel_decision.status == "approved"
+        and reviewer == "sentinel-edge"
+        and not decision_id.startswith("sentinel:")
+        and not reviewer.startswith("local")
+        and not reviewer.startswith("darkpool-local")
+    )
+
+
 def prepare_pulse_packet(intent: TradeIntent, sentinel_decision: SentinelDecision) -> dict:
     if sentinel_decision.status != "approved" or intent.status != "ready_for_sentinel":
         raise ValueError("Sentinel Edge approval is required before Pulse communication")
+    if not is_external_sentinel_edge_decision(sentinel_decision):
+        raise ValueError("External Sentinel Edge approval is required before Pulse communication")
 
     return {
-        "destination": "pulse",
+        "destination": "sentinel-edge",
+        "final_target": "sentinel-pulse",
+        "edge_review_required": True,
         "packet_type": "trade_intent",
         "symbol": intent.symbol,
         "action": intent.action,

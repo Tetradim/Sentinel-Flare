@@ -9,7 +9,7 @@
  * - Namespace isolation
  */
 
-const STORAGE_NAMESPACE = 'darkpool-mon';
+const STORAGE_NAMESPACE = 'sentinel-flare';
 
 /**
  * @template T

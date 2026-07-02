@@ -1,4 +1,4 @@
-"""Append-only Cross Bot Event Bus helpers for Darkpool Monitor."""
+"""Append-only Cross Bot Event Bus helpers for Sentinel Flare."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 
 
 EVENT_SCHEMA_VERSION = "bot-event.v1"
-DEFAULT_SOURCE = "darkpool-mon"
+DEFAULT_SOURCE = "sentinel-flare"
 
 
 def _now_utc() -> str:
@@ -50,13 +50,45 @@ class EventBusStore:
         day = (created_at or _now_utc())[:10]
         return self.root / f"{day}.jsonl"
 
+    def _idempotency_key(self, payload: dict[str, Any]) -> str:
+        direct = str(payload.get("idempotency_key") or "").strip()
+        if direct:
+            return direct
+        observation = payload.get("signal_observation")
+        if isinstance(observation, dict):
+            return str(observation.get("idempotency_key") or "").strip()
+        return ""
+
+    def _find_existing(self, event: BotEvent) -> dict[str, Any] | None:
+        idempotency_key = self._idempotency_key(event.payload)
+        if not idempotency_key or not self.root.exists():
+            return None
+        for path in sorted(self.root.glob("*.jsonl"), reverse=True):
+            for line in reversed(path.read_text(encoding="utf-8").splitlines()):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("event_type") != event.event_type:
+                    continue
+                if record.get("target") != event.target:
+                    continue
+                if self._idempotency_key(record.get("payload") or {}) == idempotency_key:
+                    return {**record, "path": str(path)}
+        return None
+
     def publish(self, event: BotEvent) -> dict[str, Any]:
         self.root.mkdir(parents=True, exist_ok=True)
+        existing = self._find_existing(event)
+        if existing:
+            return {**existing, "duplicate": True}
         record = event.to_record()
         path = self._path_for(record["created_at"])
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
-        return {**record, "path": str(path)}
+        return {**record, "path": str(path), "duplicate": False}
 
     def list_events(self, limit: int = 100, target: str | None = None) -> list[dict[str, Any]]:
         if limit <= 0 or not self.root.exists():
@@ -91,10 +123,66 @@ def publish_event(
     )
 
 
+def _intent_direction(intent: Any, source_score: Any) -> str:
+    action = str(getattr(intent, "action", "") or "").upper()
+    if action == "BUY":
+        return "bullish"
+    if action == "SELL":
+        return "bearish"
+
+    score_direction = str(getattr(source_score, "direction", "") or "").upper()
+    if score_direction == "BULLISH":
+        return "bullish"
+    if score_direction == "BEARISH":
+        return "bearish"
+    return "neutral"
+
+
+def _intent_confidence(intent: Any, source_score: Any) -> float:
+    for field_name in ("source_adjusted_confidence", "confidence"):
+        value = getattr(intent, field_name, None)
+        if value is not None:
+            try:
+                return round(float(value), 4)
+            except (TypeError, ValueError):
+                continue
+    value = getattr(source_score, "score", 0.0)
+    try:
+        return round(float(value), 4)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _signal_observation_payload(report: Any, review_payload: dict[str, Any]) -> dict[str, Any]:
+    context = report.context
+    intent = report.intent
+    source_score = context.scores[0] if context.scores else None
+    intent_id = str(getattr(intent, "id", "") or "no-intent")
+    observed_at = str(getattr(intent, "created_at", "") or _now_utc())
+    review_snapshot = dict(review_payload)
+    return {
+        "contract_version": "signal_observation.v1",
+        "source_bot": DEFAULT_SOURCE,
+        "symbol": context.symbol,
+        "asset_class": "equity",
+        "observed_at": observed_at,
+        "signal_type": "darkpool_trade_intent",
+        "direction": _intent_direction(intent, source_score),
+        "confidence": _intent_confidence(intent, source_score),
+        "payload": {
+            "provider": review_payload["provider"],
+            "intent_id": intent_id,
+            "review": review_snapshot,
+            "pulse_status": review_payload["pulse_status"],
+        },
+        "idempotency_key": f"{DEFAULT_SOURCE}:{context.symbol}:trade_intent:{intent_id}",
+    }
+
+
 def build_trade_intent_event_payload(report: Any) -> dict[str, Any]:
     context = report.context
     provider_result = context.provider_result
-    return {
+    payload = {
         "symbol": context.symbol,
         "provider": provider_result.provider,
         "degraded": provider_result.degraded,
@@ -106,3 +194,5 @@ def build_trade_intent_event_payload(report: Any) -> dict[str, Any]:
         "source_score": context.scores[0].model_dump(mode="json") if context.scores else None,
         "confirmation_sources": context.confirmation_plan.model_dump(mode="json"),
     }
+    payload["signal_observation"] = _signal_observation_payload(report, payload)
+    return payload

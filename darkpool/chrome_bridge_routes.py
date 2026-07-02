@@ -1,4 +1,4 @@
-"""Local Chrome Discord bridge ingestion for Darkpool Monitor."""
+"""Local Chrome Discord bridge ingestion for Sentinel Flare."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .bot_event_bus import publish_event
 
 
 LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
-DEFAULT_TARGET = "darkpool-mon"
+DEFAULT_TARGET = "sentinel-flare"
 _lock = Lock()
 _last_heartbeat: dict[str, Any] | None = None
 

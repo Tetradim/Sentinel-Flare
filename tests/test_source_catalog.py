@@ -136,7 +136,7 @@ def test_configured_market_providers_include_halt_and_edgar_adapters_from_enviro
     from routes.darkpool_routes import configured_market_providers
 
     monkeypatch.setenv("NASDAQ_HALTS_RSS_ENABLED", "true")
-    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "darkpool-mon test@example.com")
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "sentinel-flare test@example.com")
 
     configured = configured_market_providers("demo")
 

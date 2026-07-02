@@ -4,7 +4,7 @@ from darkpool.trade_intent import SentinelConfirmation, TradingPreferences
 
 
 @pytest.mark.asyncio
-async def test_trade_pipeline_prepares_pulse_only_after_sentinel_approval():
+async def test_trade_pipeline_withholds_pulse_until_external_sentinel_edge_approval():
     from darkpool.trade_pipeline import build_trade_intent_report
 
     report = await build_trade_intent_report(
@@ -30,21 +30,12 @@ async def test_trade_pipeline_prepares_pulse_only_after_sentinel_approval():
     assert report.intent is not None
     assert report.sentinel is not None
     assert report.sentinel.status == "approved"
-    assert report.pulse_packet is not None
-    assert report.pulse_status.status == "prepared"
+    assert report.sentinel.reviewer == "sentinel-flare-local-precheck"
+    assert report.pulse_packet is None
+    assert report.pulse_status.status == "withheld"
     assert report.pulse_status.sentinel_status == "approved"
-    assert report.pulse_packet["requires_manual_execution"] is True
+    assert any("external Sentinel Edge approval" in reason for reason in report.pulse_status.reasons)
     assert report.intent.source_coverage_override_reason == "Manual vendor check completed before demo Pulse review."
-    assert report.pulse_packet["source_coverage_override_reason"] == "Manual vendor check completed before demo Pulse review."
-    assert report.pulse_packet["required_source_coverage_complete"] is False
-    assert report.pulse_packet["missing_required_source_coverage"] == [
-        "Real-time price/NBBO confirmation",
-        "Liquidity and depth confirmation",
-        "Trading halt/LULD blocker",
-        "Material news context",
-    ]
-    coverage = {item["role"]: item for item in report.pulse_packet["source_coverage"]}
-    assert coverage["price_confirmation"]["status"] == "missing"
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""Discord bot for Darkpool Monitor."""
+"""Discord bot for Sentinel Flare."""
 
 from __future__ import annotations
 

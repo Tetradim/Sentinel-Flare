@@ -129,7 +129,7 @@ describe('settings persistence helpers', () => {
     }, { exportedAt: '2026-06-18T12:00:00.000Z' }));
 
     expect(profile).toEqual({
-      app: 'Darkpool-Mon',
+      app: 'Sentinel Flare',
       schemaVersion: 1,
       exportedAt: '2026-06-18T12:00:00.000Z',
       settings: {
@@ -146,7 +146,7 @@ describe('settings persistence helpers', () => {
 
   it('parses exported settings profiles and normalizes missing defaults', () => {
     const result = parseSettingsProfile(JSON.stringify({
-      app: 'Darkpool-Mon',
+      app: 'Sentinel Flare',
       schemaVersion: 1,
       settings: {
         theme: 'MATRIX',
@@ -254,7 +254,7 @@ describe('settings persistence helpers', () => {
         provider: 'polygon',
       },
       new Date('2026-06-18T14:35:42.000Z')
-    )).toBe('darkpool-mon-profile-nvda-polygon-2026-06-18-143542.json');
+    )).toBe('sentinel-flare-profile-nvda-polygon-2026-06-18-143542.json');
   });
 
   it('sanitizes profile filename parts when settings contain display text', () => {
@@ -264,7 +264,7 @@ describe('settings persistence helpers', () => {
         provider: 'paper / demo',
       },
       new Date('2026-06-18T14:35:42.000Z')
-    )).toBe('darkpool-mon-profile-all-stocks-paper-demo-2026-06-18-143542.json');
+    )).toBe('sentinel-flare-profile-all-stocks-paper-demo-2026-06-18-143542.json');
   });
 
   it('summarizes the active profile into operator-facing cards', () => {

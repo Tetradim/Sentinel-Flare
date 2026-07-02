@@ -1,8 +1,8 @@
-# Production Darkpool Bot Implementation Plan
+# Production Sentinel Flare Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stabilize Darkpool Monitor into a working production-oriented alerting bot and dashboard.
+**Goal:** Stabilize Sentinel Flare into a working production-oriented alerting bot and dashboard.
 
 **Architecture:** Keep FastAPI and React/Vite, but move core trading-intelligence logic into focused Python services under `darkpool/`. Repair the frontend by selectively integrating the complete older dashboard branch into the newer view architecture. Keep external data optional and provide deterministic local demo data for tests and offline use.
 

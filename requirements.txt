@@ -1,4 +1,4 @@
-# Darkpool Monitor - Python Dependencies
+# Sentinel Flare - Python Dependencies
 # =============================================================================
 
 # FastAPI & Server

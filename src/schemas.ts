@@ -1,5 +1,5 @@
 /**
- * Darkpool-Mon - Type Schemas & API Contracts
+ * Sentinel Flare - Type Schemas & API Contracts
  * 
  * Provides typed schemas for all data structures.
  * Used for validation, documentation, and code generation.

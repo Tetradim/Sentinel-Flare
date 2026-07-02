@@ -1,6 +1,6 @@
 # Chrome Discord Bridge
 
-Darkpool Monitor accepts local Chrome bridge traffic at:
+Sentinel Flare accepts local Chrome bridge traffic at:
 
 ```text
 POST /api/discord/chrome-bridge/message

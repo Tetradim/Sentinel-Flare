@@ -1,4 +1,4 @@
-# Darkpool Monitor Local Source Launcher
+# Sentinel Flare Local Source Launcher
 # Starts the FastAPI backend and Vite frontend on separate localhost ports.
 
 param(
@@ -15,7 +15,7 @@ if (-not $ProjectRoot) { $ProjectRoot = (Get-Location).Path }
 
 $DesktopPath = [Environment]::GetFolderPath("Desktop")
 if (-not $DesktopPath) { $DesktopPath = Join-Path $HOME "Desktop" }
-$LogFile = Join-Path $DesktopPath "Darkpool-Monitor.log"
+$LogFile = Join-Path $DesktopPath "Sentinel-Flare.log"
 $OwnedProcesses = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $ShutdownStarted = $false
 $CancelKeyPressHandler = $null
@@ -170,7 +170,7 @@ function Register-LauncherShutdownHandlers {
         $script:CancelKeyPressHandler = [ConsoleCancelEventHandler]{
             param($sender, $eventArgs)
             $eventArgs.Cancel = $true
-            Write-Status "Shutdown requested; stopping Darkpool Monitor" "WARN"
+            Write-Status "Shutdown requested; stopping Sentinel Flare" "WARN"
             Invoke-LauncherCleanup
             exit 0
         }
@@ -198,7 +198,7 @@ Register-LauncherShutdownHandlers
 try {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "  Darkpool Monitor - Local Source" -ForegroundColor Cyan
+    Write-Host "  Sentinel Flare - Local Source" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Status "Project root: $ProjectRoot"

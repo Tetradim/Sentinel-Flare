@@ -87,7 +87,7 @@ async def build_darkpool_summary(symbol: str, provider: str = "demo") -> Command
     return CommandSummary(
         command="darkpool",
         symbol=levels.symbol,
-        title=f"{levels.symbol} Darkpool Monitor",
+        title=f"{levels.symbol} Sentinel Flare",
         description="Level, confluence, and alert context. Require price confirmation before acting.",
         metrics=levels.metrics,
         sections=[

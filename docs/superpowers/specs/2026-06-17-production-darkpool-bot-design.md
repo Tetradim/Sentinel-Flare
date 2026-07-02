@@ -1,8 +1,8 @@
-# Production Darkpool Bot Design
+# Production Sentinel Flare Design
 
 ## Goal
 
-Make Darkpool Monitor a functional production-oriented alerting bot and dashboard for dark pool context, options-flow-style confluence, and Discord/webhook alerts. The bot must not auto-trade. It should produce explainable levels, scores, and alerts that a trader can review.
+Make Sentinel Flare a functional production-oriented alerting bot and dashboard for dark pool context, options-flow-style confluence, and Discord/webhook alerts. The bot must not auto-trade. It should produce explainable levels, scores, and alerts that a trader can review.
 
 ## Scope
 

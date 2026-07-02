@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refactor Darkpool Monitor into a production-ready intelligence workflow where provider-backed market context, trade intent scoring, Sentinel Edge review, and Pulse packet preparation are isolated, testable, and safe from accidental live order behavior.
+**Goal:** Refactor Sentinel Flare into a production-ready intelligence workflow where provider-backed market context, trade intent scoring, Sentinel Edge review, and Pulse packet preparation are isolated, testable, and safe from accidental live order behavior.
 
 **Architecture:** Move the current route-heavy `server.py` toward thin route modules over deeper domain modules. The main leverage comes from a provider-backed `MarketContext` module, a single trade-intent orchestration module, explicit Sentinel/Pulse adapters, and runtime smoke tests that exercise the documented `python server.py` startup path.
 

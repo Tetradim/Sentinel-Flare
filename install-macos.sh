@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Darkpool Monitor"
-DESKTOP_COMMAND_NAME="Darkpool Monitor.command"
+APP_NAME="Sentinel Flare"
+DESKTOP_COMMAND_NAME="Sentinel Flare.command"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${HOME}/Desktop/Darkpool-Monitor.log"
+LOG_FILE="${HOME}/Desktop/Sentinel-Flare.log"
 BACKEND_PORT=8002
 FRONTEND_PORT=3002
 INSTALL_DEPS=0

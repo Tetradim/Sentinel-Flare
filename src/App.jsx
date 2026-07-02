@@ -38,7 +38,8 @@ import {
 } from './lazyViews';
 import { VIEW_MODES } from './viewModes';
 
-const STORAGE_KEY = 'darkpool-monitor-settings-v3';
+const STORAGE_KEY = 'sentinel-flare-settings-v3';
+const LEGACY_STORAGE_KEYS = ['sentinel-flareitor-settings-v3'];
 const TIMEFRAME_HOURS = { '1H': 1, '4H': 4, '1D': 24 };
 const VIEW_MODE_ICONS = {
   dashboard: Activity,
@@ -70,7 +71,8 @@ const exportTransactionsToCsv = (rows) => {
 const readPersistedSettings = () => {
   try {
     if (typeof localStorage === 'undefined') return {};
-    const persisted = localStorage.getItem(STORAGE_KEY);
+    const persisted = localStorage.getItem(STORAGE_KEY)
+      || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
     if (!persisted) return {};
     const parsed = JSON.parse(persisted);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -528,7 +530,7 @@ export default function App() {
             <Activity className="text-white" size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">DARKPOOL MONITOR</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">SENTINEL FLARE</h1>
             <p className="text-xs text-gray-500">Real-time Institutional Activity (MAG7)</p>
           </div>
         </div>
