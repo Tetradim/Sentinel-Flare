@@ -1,9 +1,18 @@
-import { useState } from 'react';
-import { X, Monitor, Layout, Maximize2, Link, Activity, Bell, Globe, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Monitor, Layout, Maximize2, Link, Activity, Bell, Globe, Info, Database } from 'lucide-react';
 import { THEMES, CHART_TYPES, LAYOUTS, CARD_SIZES, PROVIDERS, GREEK_SYMBOLS, getThemeCSS } from './themes';
 
 export default function SettingsModal({ isOpen, onClose, settings, onSettingsChange }) {
   const [activeTab, setActiveTab] = useState('appearance');
+  const [generalApi, setGeneralApi] = useState(null);
+  const [generalApiToken, setGeneralApiToken] = useState('');
+  const [generalApiMessage, setGeneralApiMessage] = useState('');
+  const [generalApiBusy, setGeneralApiBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/general-api').then((response) => response.json()).then((data) => setGeneralApi(data.settings)).catch((error) => setGeneralApiMessage(error.message));
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -13,12 +22,42 @@ export default function SettingsModal({ isOpen, onClose, settings, onSettingsCha
     { id: 'cards', label: 'Cards', icon: Maximize2 },
     { id: 'providers', label: 'Providers', icon: Globe },
     { id: 'integrations', label: 'Integrations', icon: Link },
+    { id: 'general-api', label: 'General API', icon: Database },
     { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'tutorial', label: 'Tutorial', icon: Info },
   ];
 
   const updateSetting = (key, value) => {
     onSettingsChange({ ...settings, [key]: value });
+  };
+
+  const updateGeneralApi = (patch) => setGeneralApi((current) => ({ ...current, ...patch }));
+  const saveGeneralApi = async () => {
+    if (!generalApi) return;
+    setGeneralApiBusy(true);
+    try {
+      const payload = { ...generalApi };
+      delete payload.token_configured;
+      if (generalApiToken) payload.api_token = generalApiToken;
+      const response = await fetch('/api/general-api', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Save failed');
+      setGeneralApi(data.settings);
+      setGeneralApiToken('');
+      setGeneralApiMessage('General API settings saved.');
+    } catch (error) { setGeneralApiMessage(error.message); } finally { setGeneralApiBusy(false); }
+  };
+  const generalApiAction = async (action) => {
+    setGeneralApiBusy(true);
+    try {
+      if (generalApiToken) await saveGeneralApi();
+      const response = await fetch(`/api/general-api/${action}`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || `${action} failed`);
+      setGeneralApiMessage(action === 'register' ? `Registered ${data.participant?.participant_id || generalApi.participant_id}; token stored privately.` : `Archive reachable (${data.contract || 'archive.general.v1'}).`);
+      const refreshed = await fetch('/api/general-api').then((value) => value.json());
+      setGeneralApi(refreshed.settings);
+    } catch (error) { setGeneralApiMessage(error.message); } finally { setGeneralApiBusy(false); }
   };
 
   return (
@@ -276,6 +315,28 @@ export default function SettingsModal({ isOpen, onClose, settings, onSettingsCha
                   Plotly chart server for advanced visualizations
                 </p>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'general-api' && generalApi && (
+            <div className="space-y-6" data-testid="general-api-settings">
+              <div><h3 className="text-xl font-bold text-white">General API</h3><p className="mt-1 text-sm text-gray-400">Connect Flare to an Archive replay as a market observer. Flare publishes its own dark-pool observations; Archive never creates signals.</p></div>
+              <label className="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={generalApi.enabled} onChange={(event) => updateGeneralApi({ enabled: event.target.checked })} /> Enabled</label>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm text-gray-400">Archive General URL<input className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApi.base_url} onChange={(event) => updateGeneralApi({ base_url: event.target.value })} /></label>
+                <label className="text-sm text-gray-400">Replay run ID<input className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApi.run_id} onChange={(event) => updateGeneralApi({ run_id: event.target.value })} placeholder="run-..." /></label>
+                <label className="text-sm text-gray-400">Participant ID<input className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApi.participant_id} onChange={(event) => updateGeneralApi({ participant_id: event.target.value })} /></label>
+                <label className="text-sm text-gray-400">Observed symbols<input className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApi.subscribed_symbols.join(', ')} onChange={(event) => updateGeneralApi({ subscribed_symbols: event.target.value.split(',').map((part) => part.trim().toUpperCase()).filter(Boolean) })} placeholder="SPY, TSLA" /></label>
+                <label className="text-sm text-gray-400">Participant token<input type="password" className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApiToken} onChange={(event) => setGeneralApiToken(event.target.value)} placeholder={generalApi.token_configured ? 'Stored privately — enter to replace' : 'Paste token or register'} /></label>
+                <label className="text-sm text-gray-400">Timeout seconds<input type="number" min="0.1" step="0.1" className="mt-2 w-full rounded-lg border border-dark-600 bg-dark-900 p-3 text-white" value={generalApi.timeout_seconds} onChange={(event) => updateGeneralApi({ timeout_seconds: Number(event.target.value) })} /></label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button disabled={generalApiBusy} onClick={saveGeneralApi} className="rounded-lg bg-accent-cyan px-4 py-2 text-sm font-semibold text-dark-900">Save</button>
+                <button disabled={generalApiBusy} onClick={() => generalApiAction('test')} className="rounded-lg border border-dark-600 px-4 py-2 text-sm text-white">Test</button>
+                <button disabled={generalApiBusy || !generalApi.run_id} onClick={() => generalApiAction('register')} className="rounded-lg border border-accent-cyan px-4 py-2 text-sm text-accent-cyan">Register</button>
+                {generalApi.token_configured && <span className="text-xs text-accent-green">Token configured</span>}
+              </div>
+              {generalApiMessage && <p className="text-sm text-gray-400">{generalApiMessage}</p>}
             </div>
           )}
 

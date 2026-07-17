@@ -16,6 +16,7 @@ from fastapi import FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnec
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from collections import defaultdict
+from archive_general_api import GeneralApiConfigStore, GeneralApiDefaults, create_fastapi_router
 
 load_dotenv()
 
@@ -27,6 +28,16 @@ app = FastAPI(
     description="Backend for real-time darkpool monitoring with FINRA OTC data",
     version="2.0.0",
 )
+
+general_api_store = GeneralApiConfigStore(
+    Path(__file__).parent / "data" / "general_api.json",
+    GeneralApiDefaults(
+        bot_id="sentinel-flare",
+        display_name="Sentinel Flare",
+        roles=("observer",),
+    ),
+)
+app.include_router(create_fastapi_router(general_api_store), prefix="/api")
 
 # ============================================================================
 # Authentication & Security
@@ -3163,4 +3174,3 @@ async def get_server_thresholds(token: str = Query(...)):
     if not user_data:
         raise HTTPException(401, "Invalid token")
     return {"thresholds": alert_processor.get_thresholds(user_data["user_id"])}
-
