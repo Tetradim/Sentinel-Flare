@@ -34,7 +34,7 @@ def test_registers_bridge_routes_once():
     app = FastAPI()
     register(app)
     register(app)
-    paths = [route.path for route in app.routes]
+    paths = [getattr(route, "path", None) for route in app.routes]
 
     assert paths.count("/integration/edge/intelligence/preview") == 1
     assert paths.count("/integration/edge/intelligence/publish") == 1
