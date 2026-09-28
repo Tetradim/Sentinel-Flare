@@ -142,3 +142,26 @@ def test_configured_market_providers_include_halt_and_edgar_adapters_from_enviro
 
     assert "nasdaq_halts" in configured
     assert "sec_edgar" in configured
+
+
+def test_free_market_provider_sources_are_configured_but_do_not_complete_nbbo_or_depth(monkeypatch):
+    from routes.darkpool_routes import configured_market_providers
+
+    monkeypatch.setenv("ALPACA_API_KEY", "alpaca-key")
+    monkeypatch.setenv("ALPACA_API_SECRET", "alpaca-secret")
+    monkeypatch.setenv("MASSIVE_API_KEY", "massive-key")
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN", "tradier-token")
+
+    configured = configured_market_providers("alpaca")
+    plan = build_trade_confirmation_plan(active_provider="alpaca", configured_providers=configured)
+    by_id = {source.id: source for source in plan.sources}
+    coverage = {item.role: item for item in plan.coverage}
+
+    assert {"alpaca", "massive", "tradier"}.issubset(configured)
+    assert by_id["alpaca_delayed_sip_trades"].status == "configured"
+    assert by_id["massive_trf_trades"].status == "configured"
+    assert by_id["tradier_timesales"].status == "configured"
+    assert coverage["darkpool_context"].status == "met"
+    assert coverage["price_confirmation"].status == "partial"
+    assert coverage["liquidity_confirmation"].status == "missing"
+    assert plan.required_coverage_complete is False

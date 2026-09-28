@@ -31,7 +31,7 @@ class MarketContext:
 
 async def build_market_context(
     symbol: str,
-    provider: str = "demo",
+    provider: str = "finra",
     limit: int = 500,
     price_bucket: float = 0.10,
     configured_providers: list[str] | None = None,

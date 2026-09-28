@@ -14,7 +14,7 @@ class Subscription:
     topic: str
     symbols: list[str]
     min_score: float = 70.0
-    provider: str = "demo"
+    provider: str = "finra"
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict:
@@ -39,7 +39,7 @@ class SubscriptionStore:
         topic: str,
         symbols: list[str],
         min_score: float = 70.0,
-        provider: str = "demo",
+        provider: str = "finra",
     ) -> Subscription:
         cleaned_symbols = [symbol.strip().upper() for symbol in symbols if symbol.strip()]
         subscription = Subscription(

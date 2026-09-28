@@ -111,6 +111,45 @@ def list_market_information_sources() -> list[MarketInformationSource]:
             current_integration="planned",
         ),
         MarketInformationSource(
+            id="alpaca_delayed_sip_trades",
+            name="Alpaca Basic SIP Trade History",
+            provider="Alpaca",
+            role="price_confirmation",
+            cadence="delayed",
+            priority="context",
+            confirmation_weight=0.05,
+            official_url="https://docs.alpaca.markets/us/docs/about-market-data-api",
+            confirms=["full-SIP historical last-sale context outside the most recent 15 minutes"],
+            limitations=["delayed; does not provide live NBBO or displayed depth"],
+            current_integration="implemented for credentialed delayed SIP trade history",
+        ),
+        MarketInformationSource(
+            id="massive_trf_trades",
+            name="Massive Stocks Trades",
+            provider="Massive",
+            role="darkpool_context",
+            cadence="delayed",
+            priority="context",
+            confirmation_weight=0.0,
+            official_url="https://massive.com/docs/rest/stocks/trades-quotes/trades",
+            confirms=["trade prints with exchange and TRF identifiers when plan entitlement permits"],
+            limitations=["free access is end-of-day/backfill oriented; entitlement may not include tick trades"],
+            current_integration="implemented for credentialed trade backfill",
+        ),
+        MarketInformationSource(
+            id="tradier_timesales",
+            name="Tradier Tick Time & Sales",
+            provider="Tradier",
+            role="price_confirmation",
+            cadence="real_time",
+            priority="context",
+            confirmation_weight=0.1,
+            official_url="https://docs.tradier.com/reference/brokerage-api-markets-get-timesales",
+            confirms=["consolidated tick time-and-sales for eligible brokerage accounts"],
+            limitations=["not a dark-pool-only feed and does not provide full NBBO/depth by itself"],
+            current_integration="implemented for brokerage access tokens",
+        ),
+        MarketInformationSource(
             id="sip_nbbo",
             name="SIP/NBBO feed",
             provider="CTA/UTP or licensed market data vendor",
@@ -189,6 +228,12 @@ def build_trade_confirmation_plan(
         status: SourceStatus = "missing"
         if source.id == "finra_otc_transparency" and "finra" in configured:
             status = "available"
+        elif source.id == "alpaca_delayed_sip_trades" and "alpaca" in configured:
+            status = "configured"
+        elif source.id == "massive_trf_trades" and "massive" in configured:
+            status = "configured"
+        elif source.id == "tradier_timesales" and "tradier" in configured:
+            status = "configured"
         elif source.id in {"sip_nbbo", "nasdaq_totalview"} and "polygon" in configured:
             status = "configured"
         elif source.id == "opra_options" and ("livevol" in configured or "intrinio" in configured):

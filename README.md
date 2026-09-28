@@ -11,6 +11,7 @@ This is an intelligence and alerting tool. It does not auto-trade and should not
 - Discord bot with slash commands for dark pool level summaries and user-configured whale thresholds.
 - Offline `demo` provider so the app can run without paid data keys.
 - FINRA provider support for public weekly ATS/OTC aggregate data.
+- Credentialed free/account-based provider adapters for Alpaca delayed SIP trades, Massive Stocks trade backfill, and Tradier tick time-and-sales.
 - Dark pool level engine that clusters prints by symbol and price bucket.
 - Heatseeker-style context concepts: king node, floor, ceiling, gatekeepers, air pockets, and confluence scoring.
 - Alert candidate generation with severity, reasons, score, notional, and deduplication.
@@ -31,6 +32,7 @@ The project is now structured so the bot can run locally in demo mode immediatel
 
 Use `provider=demo` for local development, tests, and UI demos.
 Use `provider=finra` for public FINRA aggregate data. FINRA data is useful for aggregate venue context, but it is not a real-time dark pool tape.
+Use `provider=alpaca`, `provider=massive`, or `provider=tradier` only after configuring the matching credentials. These feeds are trade-context sources; they do not prove buy/sell intent and do not replace NBBO, depth, halt, or news checks.
 
 The app intentionally requires price confirmation and human review. It should not place orders automatically from a single print, confluence score, Discord alert, or Pulse packet.
 
@@ -106,6 +108,9 @@ python discord_bot.py
 - `DARKPOOL_EDGE_DECISION_SECRET`: required shared secret for Sentinel Edge decision callbacks. Requests to `/darkpool/trade-intent/edge-decision` must send it in `X-Darkpool-Edge-Secret`; the callback fails closed when this value is unset, a known placeholder, or shorter than 32 characters.
 - `PORT`: FastAPI port, default `8002`.
 - `FRONTEND_URL`: CORS origin for the Vite app.
+- `ALPACA_API_KEY` and `ALPACA_API_SECRET`: Alpaca Basic credentials for historical SIP trades outside the most recent 15 minutes. `ALPACA_API_KEY_ID` and `ALPACA_API_SECRET_KEY` are also accepted.
+- `MASSIVE_API_KEY`: Massive Stocks key for trade backfill. The app also accepts `POLYGON_API_KEY` as a legacy Massive/Polygon key, but `MASSIVE_API_KEY` is preferred.
+- `TRADIER_ACCESS_TOKEN`: Tradier Brokerage token for tick time-and-sales. Sandbox data is delayed and tick data is not available in sandbox.
 - `POLYGON_API_KEY`: optional future market-data integration.
 - `INTRINIO_API_KEY`: optional future market-data integration.
 - `UNUSUAL_WHALES_API_KEY`: optional future options-flow/GEX integration.
@@ -289,6 +294,12 @@ Frontend build note: the production build uses lazy workspace views plus manual 
 
 FINRA public OTC/ATS data is delayed and aggregate. It is not an omniscient real-time view of dark-pool intent.
 
+Alpaca Basic, Massive Stocks, and Tradier are implemented as separate source classes because their semantics differ:
+
+- Alpaca uses historical SIP trade data and intentionally queries outside the latest 15-minute Basic-plan restriction.
+- Massive preserves `exchange` and `trf_id` fields when the key is entitled to trade records; free access should be treated as end-of-day/backfill unless the account plan says otherwise.
+- Tradier provides consolidated time-and-sales for brokerage account holders, but it is not a dark-pool-only feed and does not provide full NBBO/depth confirmation by itself.
+
 Real-time options flow, GEX, VEX, and live off-lit trade feeds require licensed providers. The app is prepared for those integrations, but demo mode uses deterministic synthetic data.
 
 The source confirmation plan treats FINRA OTC transparency as context only when the active workflow is using FINRA or another configured provider explicitly supplies it. Demo workflows do not claim FINRA context availability. Higher-confidence trade confirmation requires separate coverage for real-time price/NBBO, liquidity/depth, halt/LULD, and material-news sources before the source plan is complete; options-flow confirmation is shown as a strong optional signal. By default, `require_source_coverage_complete=true` blocks Pulse preparation until required coverage is complete, even if manual Sentinel checkboxes are ticked. Operators can set it to `false` for demo review or raise `min_source_confirmation_weight` from `0` to enforce configured source coverage as an additional hard gate. The dashboard also shows source-adjusted confidence and role-level coverage so an unconfirmed but high-confluence setup is visibly weaker than one backed by live confirmation sources.
@@ -310,6 +321,10 @@ Feature direction was informed by public documentation and product behavior from
 - FINRA Weekly Summary API: https://developer.finra.org/docs/api-explorer/query_api-equity-weekly_summary
 - FINRA OTC transparency overview: https://www.finra.org/filing-reporting/otc-transparency
 - FINRA Reg SHO Daily Short Sale Volume: https://developer.finra.org/docs/api-explorer/query_api-equity-reg_sho_daily_short_sale_volume
+- Alpaca Market Data API: https://docs.alpaca.markets/us/docs/about-market-data-api
+- Massive Stocks Trades API: https://massive.com/docs/rest/stocks/trades-quotes/trades
+- Tradier market-data entitlements: https://docs.tradier.com/docs/market-data
+- Tradier time-and-sales API: https://docs.tradier.com/reference/brokerage-api-markets-get-timesales
 - NYSE Daily TAQ / CTA-UTP trade and quote history: https://www.nyse.com/market-data/historical/daily-taq
 - Nasdaq TotalView-ITCH: https://data.nasdaq.com/databases/NTV
 - Cboe LiveVol API: https://api.livevol.com/

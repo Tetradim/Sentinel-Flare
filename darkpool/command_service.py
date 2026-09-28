@@ -23,11 +23,11 @@ class CommandSummary:
     sections: list[SummarySection] = field(default_factory=list)
 
 
-async def _data_context(symbol: str, provider: str = "demo") -> MarketContext:
+async def _data_context(symbol: str, provider: str = "finra") -> MarketContext:
     return await build_market_context(symbol, provider=provider, limit=220)
 
 
-async def build_levels_summary(symbol: str, provider: str = "demo", limit: int = 5) -> CommandSummary:
+async def build_levels_summary(symbol: str, provider: str = "finra", limit: int = 5) -> CommandSummary:
     context = await _data_context(symbol, provider)
     items = [
         f"${level.price:.2f} | score {level.strength_score:.1f} | {level.total_size:,} sh | {level.print_count} print(s)"
@@ -48,7 +48,7 @@ async def build_levels_summary(symbol: str, provider: str = "demo", limit: int =
     )
 
 
-async def build_confluence_summary(symbol: str, provider: str = "demo", limit: int = 5) -> CommandSummary:
+async def build_confluence_summary(symbol: str, provider: str = "finra", limit: int = 5) -> CommandSummary:
     context = await _data_context(symbol, provider)
     items = [
         f"${score.level_price:.2f} | {score.direction} | score {score.score:.1f} | {', '.join(score.reasons[:2])}"
@@ -64,7 +64,7 @@ async def build_confluence_summary(symbol: str, provider: str = "demo", limit: i
     )
 
 
-async def build_alerts_summary(symbol: str, provider: str = "demo", limit: int = 5) -> CommandSummary:
+async def build_alerts_summary(symbol: str, provider: str = "finra", limit: int = 5) -> CommandSummary:
     context = await _data_context(symbol, provider)
     items = [
         f"{alert.severity.upper()} | {alert.message} | score {alert.score:.1f}"
@@ -80,7 +80,7 @@ async def build_alerts_summary(symbol: str, provider: str = "demo", limit: int =
     )
 
 
-async def build_darkpool_summary(symbol: str, provider: str = "demo") -> CommandSummary:
+async def build_darkpool_summary(symbol: str, provider: str = "finra") -> CommandSummary:
     levels = await build_levels_summary(symbol, provider, limit=3)
     confluence = await build_confluence_summary(symbol, provider, limit=3)
     alerts = await build_alerts_summary(symbol, provider, limit=3)
@@ -98,7 +98,7 @@ async def build_darkpool_summary(symbol: str, provider: str = "demo") -> Command
     )
 
 
-async def build_watchlist_summary(symbols: list[str], provider: str = "demo") -> CommandSummary:
+async def build_watchlist_summary(symbols: list[str], provider: str = "finra") -> CommandSummary:
     cleaned = [symbol.strip().upper() for symbol in symbols if symbol.strip()]
     rows: list[tuple[str, float, str]] = []
     for symbol in cleaned:

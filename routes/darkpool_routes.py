@@ -74,6 +74,14 @@ def require_edge_decision_secret(
 
 def configured_market_providers(active_provider: str) -> list[str]:
     configured = {active_provider.lower()}
+    alpaca_key = os.getenv("ALPACA_API_KEY_ID") or os.getenv("ALPACA_API_KEY")
+    alpaca_secret = os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("ALPACA_API_SECRET")
+    if alpaca_key and alpaca_secret:
+        configured.add("alpaca")
+    if os.getenv("MASSIVE_API_KEY") or os.getenv("POLYGON_API_KEY"):
+        configured.add("massive")
+    if os.getenv("TRADIER_ACCESS_TOKEN"):
+        configured.add("tradier")
     if os.getenv("POLYGON_API_KEY"):
         configured.add("polygon")
     if os.getenv("INTRINIO_API_KEY"):
@@ -86,7 +94,7 @@ def configured_market_providers(active_provider: str) -> list[str]:
 
 
 async def _fetch_demo_otc_data(symbol: str | None) -> list[dict]:
-    result = await fetch_provider_result(symbol, provider="demo", limit=500)
+    result = await fetch_provider_result(symbol, provider="finra", limit=500)
     return result.records
 
 
@@ -196,7 +204,7 @@ async def _fetch_legacy_otc_data(
 @router.get("/darkpool/otc", response_model=OTCAggregateResponse)
 async def get_otc_aggregate(
     symbol: str | None = Query(None, description="Stock symbol (e.g., AAPL)"),
-    provider: str = Query("demo", description="Data provider: demo, finra, polygon, intrinio"),
+    provider: str = Query("finra", description="Data provider: demo, finra, polygon, intrinio"),
     tier: Literal["T1", "T2", "OTCE"] = Query(
         "T1",
         description="T1=S&P500, T2=NMS, OTCE=OTC equities",
@@ -224,7 +232,7 @@ async def get_otc_aggregate(
 @router.get("/darkpool/trades")
 async def get_recent_trades(
     symbol: str = Query(..., description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider"),
+    provider: str = Query("finra", description="Data provider"),
     limit: int = Query(100, ge=1, le=5000, description="Max results"),
 ):
     """Get recent dark pool trades for a symbol."""
@@ -245,7 +253,7 @@ async def get_recent_trades(
 @router.get("/darkpool/levels")
 async def get_darkpool_levels(
     symbol: str = Query("AAPL", description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider: demo or finra"),
+    provider: str = Query("finra", description="Data provider: demo or finra"),
     price_bucket: float = Query(0.10, gt=0, le=5, description="Price clustering bucket"),
     limit: int = Query(25, ge=1, le=200),
 ):
@@ -274,7 +282,7 @@ async def get_darkpool_levels(
 @router.get("/darkpool/confluence")
 async def get_darkpool_confluence(
     symbol: str = Query("AAPL", description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider: demo or finra"),
+    provider: str = Query("finra", description="Data provider: demo or finra"),
     price_bucket: float = Query(0.10, gt=0, le=5),
     limit: int = Query(10, ge=1, le=50),
 ):
@@ -314,7 +322,7 @@ async def get_darkpool_confluence(
 @router.get("/darkpool/alert-candidates")
 async def get_darkpool_alert_candidates(
     symbol: str = Query("AAPL", description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider: demo or finra"),
+    provider: str = Query("finra", description="Data provider: demo or finra"),
     price_bucket: float = Query(0.10, gt=0, le=5),
     limit: int = Query(20, ge=1, le=100),
 ):
@@ -341,11 +349,12 @@ async def get_darkpool_alert_candidates(
 @router.get("/darkpool/backtest")
 async def get_darkpool_backtest(
     symbol: str = Query("AAPL", description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider: demo or finra"),
+    provider: str = Query("finra", description="Data provider: demo or finra"),
     fee_bps: float = Query(2.0, ge=0, le=100, description="Round-trip cost estimate in basis points"),
     trade_limit: int = Query(50, ge=1, le=500),
 ):
     """Return lightweight print follow-through backtest metrics."""
+    raise HTTPException(410, "Darkpool follow-through backtests have been removed from runtime.")
     try:
         provider_result = await fetch_provider_result(symbol, provider=provider, limit=500)
     except ProviderError as exc:
@@ -370,7 +379,7 @@ async def get_darkpool_backtest(
 
 @router.get("/darkpool/information-sources")
 async def get_darkpool_information_sources(
-    active_provider: str = Query("demo", description="Active source provider for current workflow"),
+    active_provider: str = Query("finra", description="Active source provider for current workflow"),
 ):
     """Return market information sources and their confirmation roles."""
     configured_providers = configured_market_providers(active_provider)
@@ -385,7 +394,7 @@ async def get_darkpool_information_sources(
 @router.get("/darkpool/trade-intent")
 async def get_darkpool_trade_intent(
     symbol: str = Query("AAPL", description="Stock symbol"),
-    provider: str = Query("demo", description="Data provider: demo or finra"),
+    provider: str = Query("finra", description="Data provider: demo or finra"),
     price_bucket: float = Query(0.10, gt=0, le=5),
     min_score: float = Query(75.0, ge=0, le=100),
     max_distance_pct: float = Query(1.0, ge=0, le=10),

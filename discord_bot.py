@@ -87,31 +87,31 @@ async def _send_summary(
 
 
 @bot.tree.command()
-async def darkpool(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "demo"):
+async def darkpool(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "finra"):
     """Get a combined dark pool, confluence, and alert summary."""
     await _send_summary(interaction, build_darkpool_summary, symbol, provider=provider)
 
 
 @bot.tree.command()
-async def levels(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "demo"):
+async def levels(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "finra"):
     """Show clustered dark pool levels for a ticker."""
     await _send_summary(interaction, build_levels_summary, symbol, provider=provider)
 
 
 @bot.tree.command()
-async def confluence(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "demo"):
+async def confluence(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "finra"):
     """Show dark pool, exposure-node, and options-flow confluence."""
     await _send_summary(interaction, build_confluence_summary, symbol, provider=provider)
 
 
 @bot.tree.command()
-async def alerts(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "demo"):
+async def alerts(interaction: discord.Interaction, symbol: str = "AAPL", provider: str = "finra"):
     """Show explainable alert candidates for a ticker."""
     await _send_summary(interaction, build_alerts_summary, symbol, provider=provider)
 
 
 @bot.tree.command()
-async def watchlist(interaction: discord.Interaction, symbols: str = "AAPL,NVDA,MSFT", provider: str = "demo"):
+async def watchlist(interaction: discord.Interaction, symbols: str = "AAPL,NVDA,MSFT", provider: str = "finra"):
     """Show top dark pool candidates for a comma-separated ticker list."""
     parsed = [symbol.strip() for symbol in symbols.split(",") if symbol.strip()]
     await _send_summary(interaction, build_watchlist_summary, parsed, provider=provider)
@@ -123,7 +123,7 @@ async def subscribe(
     topic: str = "alerts",
     symbols: str = "AAPL,NVDA,MSFT",
     min_score: float = 70.0,
-    provider: str = "demo",
+    provider: str = "finra",
 ):
     """Subscribe the current channel to an autopost topic."""
     parsed = [symbol.strip() for symbol in symbols.split(",") if symbol.strip()]
